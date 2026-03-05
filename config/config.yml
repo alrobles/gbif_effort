@@ -1,0 +1,22 @@
+gbifdb_dir: "/abs/path/to/gbifdb/snapshot/occurrence.parquet"
+study_area_path: "data/study_area/aoi.gpkg"
+
+taxa: ["Mammalia", "Amphibia", "Squamata"]
+year_range: [1980, 2024]
+uncertainty_m: 1000
+
+# WGS84 event grid (Stage 1)
+wgs84_cell_deg: 0.0083333333333  # ~1/120 deg
+
+# Equal-area KDE (Stage 2)
+equal_area_epsg: 8857
+resolution_m: 1000
+kde:
+  bandwidth: "auto"
+norm:
+  method: "max"
+
+output:
+  tables_dir: "output/tables"
+  maps_dir:   "output/maps"
+  basename:   "gbif_kde"

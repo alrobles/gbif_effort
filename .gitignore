@@ -1,0 +1,30 @@
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# data & outputs
+data/*
+!data/**/.gitkeep
+output/*
+!output/**/.gitkeep
+
+# heavy geodata & caches
+**/*.parquet
+**/*.feather
+**/*.tif
+**/*.tiff
+**/*.gpkg
+**/*.shp
+**/*.dbf
+**/*.shx
+**/*.prj
+**/*.cpg
+**/*.qmd
+
+# renv
+renv/library/
+renv/cache/
+
+# container artifacts
+container/*.sif
