@@ -3,7 +3,7 @@ From: rocker/geospatial:4.4.1
 
 %labels
     Maintainer "Angel Luis Robles Fernández"
-    Description "Geospatial R (rocker/geospatial:4.4.1) + gbifdb + ks + helpers for GBIF KDE pipeline."
+    Description "Geospatial R (rocker/geospatial:4.4.1) + gbifdb + ks + minioclient for GBIF KDE pipeline."
 
 %environment
     CRAN=https://cloud.r-project.org
@@ -13,9 +13,17 @@ From: rocker/geospatial:4.4.1
 
 %post
     set -e
-    echo "=== Installing required R packages (tidyverse & terra already in base) ==="
-    R --quiet -e 'install.packages(c("gbifdb","ks","yaml","optparse","rnaturalearth","rnaturalearthdata","furrr"), repos=Sys.getenv("CRAN"))'
-    echo "=== Done. ==="
+    echo "=== Installing required R packages (tidyverse & terra are in base) ==="
+    R --quiet -e 'install.packages(c(
+        "gbifdb",            # GBIF parquet interface
+        "ks",                # KDE
+        "minioclient",       # REQUIRED by gbifdb::gbif_download()
+        "yaml","optparse",   # config / CLI
+        "rnaturalearth","rnaturalearthdata", # land mask build
+        "furrr"              # optional parallel mapping
+      ), repos=Sys.getenv("CRAN"))'
+    echo "=== Done installing R packages. ==="
 
 %runscript
-
+    # Usage: apptainer exec container/gbif-kde.sif <command>
+    exec "$@"
