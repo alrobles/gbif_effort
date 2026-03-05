@@ -1,9 +1,9 @@
 Bootstrap: docker
-From: ghcr.io/rocker-org/geospatial:devel
+From: rocker/geospatial:4.4.1
 
 %labels
     Maintainer "Angel Luis Robles Fernández"
-    Description "Geospatial R (rocker geospatial devel) + gbifdb + ks for GBIF KDE pipeline."
+    Description "Geospatial R (rocker/geospatial:4.4.1) + gbifdb + ks + helpers for GBIF KDE pipeline."
 
 %environment
     CRAN=https://cloud.r-project.org
@@ -13,11 +13,9 @@ From: ghcr.io/rocker-org/geospatial:devel
 
 %post
     set -e
-    echo "=== Install required R packages: gbifdb, ks (tidyverse & terra already present) ==="
+    echo "=== Installing required R packages (tidyverse & terra already in base) ==="
     R --quiet -e 'install.packages(c("gbifdb","ks","yaml","optparse","rnaturalearth","rnaturalearthdata","furrr"), repos=Sys.getenv("CRAN"))'
     echo "=== Done. ==="
 
 %runscript
-    echo "Container ready. Example:"
-    echo "  apptainer exec container/gbif-kde.sif bash scripts/run_all.sh"
-    exec "$@"
+
