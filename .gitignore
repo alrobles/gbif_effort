@@ -28,3 +28,10 @@ renv/cache/
 
 # container artifacts
 container/*.sif
+
+# exceptions (files obligated in git)
+
+!data/study_area/AOI.gpkg
+!data/study_area/world_template.tif
+
+
