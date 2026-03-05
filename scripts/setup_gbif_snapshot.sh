@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 1) Ensure .env is loaded (so we get GBIFDB_DIR)
+# 1) Load .env for GBIFDB_DIR
 if [[ -f ".env" ]]; then
   set -o allexport
   source .env
@@ -9,11 +9,11 @@ if [[ -f ".env" ]]; then
 fi
 
 if [[ -z "${GBIFDB_DIR:-}" ]]; then
-  echo "ERROR: GBIFDB_DIR not set. cp config/.env.example .env and set GBIFDB_DIR=/path/to/snapshot"
+  echo "ERROR: GBIFDB_DIR not set. cp config/.env.example .env and set GBIFDB_DIR=/path/to/snapshot_dir"
   exit 1
 fi
 
-# 2) Install MinIO client locally (repo-scoped), if not installed
+# 2) Install MinIO client locally if missing
 if [[ ! -x ".bin/mc" ]]; then
   echo "Installing MinIO client (mc)..."
   bash scripts/install_minio.sh
@@ -21,8 +21,8 @@ else
   echo "MinIO client found at .bin/mc"
 fi
 
-# 3) Prepend .bin to PATH so gbifdb::gbif_download() can find 'mc'
-export PATH="$(pwd)/.bin:${PATH}"
+# 3) Prepare clean PATH for the container (avoid Lmod etc.)
+HOST_BIN_PATH="$(pwd)/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # 4) Build container if needed
 if [[ ! -f "container/gbif-kde.sif" ]]; then
@@ -30,22 +30,21 @@ if [[ ! -f "container/gbif-kde.sif" ]]; then
   bash container/build.sh
 fi
 
-# 5) Choose a bucket close to your region for faster sync
-#    Defaults to us-east-1; adjust to e.g. "gbif-open-data-eu-central-1" if appropriate.
+# 5) Region/bucket + optional version
 BUCKET="${BUCKET:-gbif-open-data-us-east-1}"
-
-# 6) Optional: pin a snapshot date (YYYY-MM-DD) by setting VERSION, otherwise latest
 VERSION="${VERSION:-}"
 
 echo "Starting GBIF snapshot download into: ${GBIFDB_DIR}"
 echo "Bucket : ${BUCKET}"
 echo "Version: ${VERSION:-latest}"
 
-# 7) Run the R downloader inside the container, inheriting PATH with mc
-CONFIG=${CONFIG:-config/config.yml}
+# 6) Verify mc is executable on host
+./.bin/mc --version >/dev/null 2>&1 || { echo "ERROR: mc not runnable."; exit 1; }
 
+# 7) Exec inside container with --cleanenv and explicit PATH
 apptainer exec \
-  --env PATH="${PATH}" \
+  --cleanenv \
+  --env PATH="${HOST_BIN_PATH}" \
   container/gbif-kde.sif \
   Rscript scripts/download_gbif_snapshot.R \
     --dir "${GBIFDB_DIR}" \
