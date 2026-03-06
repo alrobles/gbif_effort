@@ -2,6 +2,11 @@
 .Rhistory
 .RData
 .Rproj.user/
+gbif_effort.Rproj.local
+
+# sandbox
+sandbox/*
+sandbox
 
 # data & outputs
 data/*
