@@ -4,23 +4,24 @@ set -euo pipefail
 : "${CONFIG:=config/config.yml}"
 : "${SIF:=container/gbif-kde.sif}"
 : "${THREADS:=16}"
-: "${GBIFDB_DIR:=gbifdata}"        # repo-local by default
+: "${GBIFDB_DIR:=gbifdata}"
 : "${APPTAINER:=apptainer}"
 : "${CLEANENV:=1}"
-
-# space-separated list, e.g. "Mammalia Amphibia"
 : "${TAXA:=Mammalia}"
 
-# Threads env for R/DuckDB/Arrow/BLAS
-export GBIFDB_DIR
-export DUCKDB_MAX_THREADS="${THREADS}"
-export ARROW_NUM_THREADS="${THREADS}"
-export OMP_NUM_THREADS="${THREADS}"
-export OPENBLAS_NUM_THREADS="${THREADS}"
-export MKL_NUM_THREADS="${THREADS}"
-
+# Compose Apptainer exec flags
 AE=()
 [[ "${CLEANENV}" == "1" ]] && AE+=(--cleanenv)
+
+# >>> Add explicit --env forwarding <<<
+AE+=( \
+  --env GBIFDB_DIR="${GBIFDB_DIR}" \
+  --env DUCKDB_MAX_THREADS="${THREADS}" \
+  --env ARROW_NUM_THREADS="${THREADS}" \
+  --env OMP_NUM_THREADS="${THREADS}" \
+  --env OPENBLAS_NUM_THREADS="${THREADS}" \
+  --env MKL_NUM_THREADS="${THREADS}" \
+)
 
 [[ -f "${SIF}" ]] || { echo "ERROR: SIF not found: ${SIF}"; exit 1; }
 
