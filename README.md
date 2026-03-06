@@ -1,199 +1,181 @@
-# Overview
+# What this guide covers
 
-This repository provides a containerized (Apptainer) workflow to *(i)* mirror a GBIF Parquet snapshot locally and *(ii)* run a two-stage R pipeline: Stage 1 (collect unique events) and Stage 2 (KDE in EPSG:8857, cropped to an AOI).
+1.  Build the Apptainer image for a reproducible R geospatial stack.
+
+2.  Download (mirror) the GBIF Parquet snapshot locally (resume–safe).
+
+3.  Run Stage 1 (collect unique events / effort counts) for **Mammalia**.
+
+This README is the LaTeX source; you can convert it to Markdown using Pandoc in R:
+
+    library(rmarkdown)
+    pandoc_convert("README_stage1.tex", to = "gfm", output = "README.md",
+                   options = c("--wrap=none"))
 
 # Prerequisites
 
-- Linux environment with **Apptainer** (Singularity) available.
+- Linux machine or HPC environment with **Apptainer** (a.k.a. Singularity).
 
-- **git** installed.
+- **git**.
 
-- Network egress to public S3 (HTTPS/443).
+- Outbound HTTPS (443) to access public S3 buckets for GBIF snapshots.
 
-- Disk space: ~300 GB (varies by snapshot).
+- Disk space: recommend hundreds of GB (varies by selected snapshot and taxa).
 
-# Quick Start (TL;DR)
+# Repository layout (Stage–1 only)
 
-Run these from a shell after cloning:
+    gbif_effort/
+      container/
+        apptainer.def
+        build.sh
+      scripts/
+        01_collect_events_batch.R
+        run_stage1.sh
+        submit_stage1_array.slurm
+        install_minio.sh
+        setup_gbif_snapshot.sh
+        download_gbif_snapshot.R
+      config/
+        config.yml
+        .env.example          # GBIFDB_DIR=gbifdata
+      data/
+        study_area/
+          world_template.tif  # 0.1° lon/lat template (tracked)
+          AOI.gpkg            # saved for later (unused in Stage-1)
+      gbifdata/               # GBIF Parquet mirror (ignored by git)
+      output/                 # results (ignored by git)
+
+# Clone and configure
 
     # 0) Clone
     git clone git@github.com:YOURUSER/gbif_effort.git
     cd gbif_effort
 
-    # 1) Configure env (repo-local snapshot directory by default)
+    # 1) Environment file (repo-local GBIF mirror by default)
     cp config/.env.example .env
     # .env should contain: GBIFDB_DIR=gbifdata
 
-    # 2) Build Apptainer image (includes gbifdb, ks, minioclient)
-    bash container/build.sh
+    # 2) Confirm the world template exists (0.1° lon/lat)
+    ls -lh data/study_area/world_template.tif
 
-    # 3) Download GBIF snapshot (resume-safe; choose closest bucket)
-    BUCKET=gbif-open-data-us-east-1 VERSION= \
-    bash scripts/setup_gbif_snapshot.sh
-
-    # 4) Stage 1 (Mammalia only as first pass)
-    CONFIG=config/config.yml \
-    apptainer exec --cleanenv container/gbif-kde.sif \
-      Rscript scripts/01_collect_events.R --config config/config.yml --taxa Mammalia
-
-    # 5) Stage 2 (KDE for Mammalia)
-    CONFIG=config/config.yml \
-    apptainer exec --cleanenv container/gbif-kde.sif \
-      Rscript scripts/02_kde_world8857.R --config config/config.yml --taxon Mammalia
-
-# Clone & Configure
-
-    git clone git@github.com:YOURUSER/gbif_effort.git
-    cd gbif_effort
-
-    # Create runtime .env
-    cp config/.env.example .env
-    # .env -> GBIFDB_DIR=gbifdata   (a DIRECTORY, not a file)
-
-**Notes.**
-
-- The mirror will create: `gbifdata/occurrence/YYYY-MM-DD/occurrence.parquet/`
-
-- Optional AOI (recommended for prototyping):
-
-      data/study_area/AOI.gpkg
-
-  Point to it in `config/config.yml`:
-
-      study_area_path: "data/study_area/AOI.gpkg"
-
-# Build the Apptainer Image
+# Build the Apptainer image
 
     bash container/build.sh
-    # produces: container/gbif-kde.sif
+    # result: container/gbif-kde.sif
 
-The image is based on `rocker/geospatial` and installs: `gbifdb`, `ks`, `minioclient`, and small helper packages used by scripts.
+# Mirror the GBIF Parquet snapshot (resume–safe)
 
-# Download the GBIF Parquet Snapshot (Resume-Safe)
+The repo provides a small wrapper that: (1) downloads a local `mc` client if missing, (2) launches an R script `gbifdb::gbif_download()` inside the container.
 
-Default mirrors the latest snapshot from the US bucket into `./gbifdata`:
+## Mirror the latest US snapshot into `./gbifdata`
 
     BUCKET=gbif-open-data-us-east-1 VERSION= \
     bash scripts/setup_gbif_snapshot.sh
 
-**Tips.**
+## Notes
 
-- Choose a regional bucket close to your compute: e.g., `gbif-open-data-eu-central-1` or `gbif-open-data-ap-southeast-2`.
+- **VERSION=** `YYYY-MM-DD` pins a specific snapshot (strict reproducibility).
 
-- Pin a specific release date (strict reproducibility) via `VERSION=YYYY-MM-DD`.
+- The mirror is **resume–safe**. If interrupted, re-run the same command.
 
-- *Resume-safe:* If interrupted, re-run the same command; it continues where it left off.
+- Expected layout after completion:
 
-## Retry Loop for Flaky Networks (optional)
+      gbifdata/
+        occurrence/
+          YYYY-MM-DD/
+            occurrence.parquet/
+              part-00000-...parquet
+              part-00001-...parquet
+              ...
 
-    export BUCKET=gbif-open-data-us-east-1
-    export VERSION=
-    for i in $(seq 1 30); do
-      echo "Attempt $i @ $(date)"
-      if bash scripts/setup_gbif_snapshot.sh; then
-        echo "Mirror succeeded"; break
-      fi
-      echo "Mirror failed; sleeping 60s…"
-      sleep 60
-    done
+# Verify the snapshot quickly
 
-## Expected Layout After Success
-
-    gbifdata/
-      occurrence/
-        YYYY-MM-DD/
-          occurrence.parquet/
-            part-00000-...parquet
-            part-00001-...parquet
-            ...
-
-# Verify the Local Snapshot
-
-    apptainer exec --cleanenv container/gbif-kde.sif R -q <<'RS'
+    apptainer exec --cleanenv \
+      --env GBIFDB_DIR="$PWD/gbifdata" \
+      container/gbif-kde.sif R -q <<'RS'
     library(gbifdb); library(dplyr)
-    gbif <- gbif_local("gbifdata")  # autodiscovers latest version
-    print(gbif %>% select(class, year, decimallatitude, decimallongitude) %>%
+    x <- gbif_local(Sys.getenv("GBIFDB_DIR","gbifdata"))
+    print(x %>% select(class, year, decimallatitude, decimallongitude) %>%
           head() %>% collect())
     RS
 
-# Run the Pipeline
+# Run Stage–1 for Mammalia
 
-## Stage 1: Collect Unique Events
+Stage–1 reads the **0.1° grid** directly from `data/study_area/world_template.tif`. It **does not** apply an AOI yet (as per this first, simplified release).
 
-Produces per-taxon CSV of event coordinates over land-only cells.
+## A. Run directly (host wrapper; sequential)
 
+    THREADS=32 \
+    TAXA="Mammalia" \
     CONFIG=config/config.yml \
-    apptainer exec --cleanenv container/gbif-kde.sif \
-      Rscript scripts/01_collect_events.R --config config/config.yml --taxa Mammalia
+    SIF=container/gbif-kde.sif \
+    GBIFDB_DIR="$PWD/gbifdata" \
+    bash scripts/run_stage1.sh
 
-Outputs:
+Outputs (examples):
 
-    output/tables/
-      02_gbif_events_Mammalia.csv
+    output/tables/Mammalia_effort_df.csv
+    # (If --write-tif is enabled inside the R call, also:)
+    output/maps/Mammalia_effort_df.tif
 
-## Stage 2: KDE → GeoTIFF
+## B. SLURM array (one taxon per task; optional)
 
-Reproject to EPSG:8857, grid/rasterize counts, KDE (ks), normalize, crop to AOI, reproject to WGS84 for distribution:
+    printf "Mammalia\n" > taxa.txt
 
-    CONFIG=config/config.yml \
-    apptainer exec --cleanenv container/gbif-kde.sif \
-      Rscript scripts/02_kde_world8857.R --config config/config.yml --taxon Mammalia
+    sbatch --array=1-1 \
+      --cpus-per-task=32 --mem=120G -t 24:00:00 \
+      --export=THREADS=32,CONFIG=config/config.yml,SIF=container/gbif-kde.sif, \
+               GBIFDB_DIR=$PWD/gbifdata,TAXA_FILE=taxa.txt \
+      scripts/submit_stage1_array.slurm
 
-Outputs (name reflects resolution_m):
+# What the Stage–1 script does
 
-    output/maps/
-      r_kde_wgs84_Mammalia_10000m.tif
+1.  Reads template resolution ($`\Delta\lambda, \Delta\phi`$) from `world_template.tif` (0.1°).
 
-# Configuration Knobs (config/config.yml)
+2.  Queries GBIF locally (`gbifdb::gbif_local()`) with year/uncertainty/taxon filters.
 
-- `taxa`: e.g., `["Mammalia"]` for first pass.
+3.  Snaps lon/lat to the 0.1° grid and reduces to `distinct(class, lon, lat, eventdate)`.
 
-- `study_area_path`: e.g., `"data/study_area/AOI.gpkg"`.
+4.  Aggregates to counts per grid cell $`(\lambda,\phi)`$ — an effort table.
+
+5.  Writes a CSV per taxon (and optionally a GeoTIFF).
+
+# Configuration knobs (`config/config.yml`)
+
+- `world_template_path`: typically `data/study_area/world_template.tif`.
 
 - `year_range`, `uncertainty_m`.
 
-- Stage 1 grid: `wgs84_cell_deg` (e.g., 0.0083333333 $`\approx`$ 1 km).
-
-- Stage 2 proj/res: `equal_area_epsg: 8857`, `resolution_m` (e.g., 10000).
-
-- KDE bandwidth: `kde.bandwidth: "auto"` or a numeric (meters).
-
-# Recommended Repository Layout
-
-    gbif_effort/
-      R/                     # helpers + stage functions
-      scripts/               # CLI entrypoints + setup helpers
-      config/                # config.yml + .env.example
-      container/             # apptainer.def + build.sh
-      data/
-        study_area/          # AOI.gpkg and small vector layers (tracked)
-        world/               # small templates (tif) if desired
-      gbifdata/              # local GBIF mirror (ignored)
-      output/
-        tables/              # CSVs (ignored)
-        maps/                # GeoTIFFs (ignored)
-      .gitignore
+- `output.tables_dir`, `output.maps_dir`.
 
 # Troubleshooting
 
-#### Connection reset / mirror fails mid-run.
+#### Container cannot find `GBIFDB_DIR`.
 
-Re-run the setup script (resume-safe) or use the retry loop. If your HPC has DTNs (data transfer nodes), run there. Try a closer regional bucket.
+If you run with `--cleanenv`, forward the environment variable explicitly:
 
-#### `minioclient` required.
+    --env GBIFDB_DIR="$PWD/gbifdata"
 
-The image pre-installs the R package `minioclient`, which `gbif_download()` uses to drive the `mc mirror` operation. If you customized the image, ensure `minioclient` is installed inside the container.
+The provided wrappers (`run_stage1.sh`, `setup_gbif_snapshot.sh`) already pass `–env`.
 
-#### GBIF path confusion.
+#### Empty results for a taxon.
 
-`GBIFDB_DIR` is a *directory*. The mirror creates: `GBIFDB_DIR/occurrence/YYYY-MM-DD/occurrence.parquet/`.
+Double-check: (1) taxon class name matches GBIF (`Mammalia`), (2) widen `year_range`, (3) test uncertainty policy (keep NA vs. drop NA), and (4) verify the snapshot path.
 
-# Reproducibility Tips
+# Quick reference (commands)
 
-- Pin `VERSION=YYYY-MM-DD` when mirroring the snapshot.
+## Build image
 
-- Commit only small AOIs/templates; ignore heavy rasters and `gbifdata`.
+    bash container/build.sh
 
-- Keep `--cleanenv` on `apptainer exec` to avoid host module pollution.
+## Mirror snapshot (latest US bucket)
 
+    BUCKET=gbif-open-data-us-east-1 VERSION= \
+    bash scripts/setup_gbif_snapshot.sh
+
+## Run Stage–1 for Mammalia
+
+    THREADS=32 TAXA="Mammalia" CONFIG=config/config.yml \
+    SIF=container/gbif-kde.sif GBIFDB_DIR="$PWD/gbifdata" \
+    bash scripts/run_stage1.sh
 
