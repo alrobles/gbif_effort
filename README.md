@@ -6,12 +6,6 @@
 
 3.  Run Stage 1 (collect unique events / effort counts) for **Mammalia**.
 
-This README is the LaTeX source; you can convert it to Markdown using Pandoc in R:
-
-    library(rmarkdown)
-    pandoc_convert("README_stage1.tex", to = "gfm", output = "README.md",
-                   options = c("--wrap=none"))
-
 # Prerequisites
 
 - Linux machine or HPC environment with **Apptainer** (a.k.a. Singularity).
@@ -37,18 +31,18 @@ This README is the LaTeX source; you can convert it to Markdown using Pandoc in 
         download_gbif_snapshot.R
       config/
         config.yml
-        .env.example          # GBIFDB_DIR=gbifdata
+        .env.example          
       data/
         study_area/
-          world_template.tif  # 0.1° lon/lat template (tracked)
-          AOI.gpkg            # saved for later (unused in Stage-1)
-      gbifdata/               # GBIF Parquet mirror (ignored by git)
-      output/                 # results (ignored by git)
+          world_template.tif  # 0.1° lon/lat template 
+          AOI.gpkg            # for stage 2
+      gbifdata/               # GBIF Parquet mirror 
+      output/                 # results 
 
 # Clone and configure
 
     # 0) Clone
-    git clone git@github.com:YOURUSER/gbif_effort.git
+    git clone git@github.com:alrobles/gbif_effort.git
     cd gbif_effort
 
     # 1) Environment file (repo-local GBIF mirror by default)
@@ -65,7 +59,9 @@ This README is the LaTeX source; you can convert it to Markdown using Pandoc in 
 
 # Mirror the GBIF Parquet snapshot (resume–safe)
 
-The repo provides a small wrapper that: (1) downloads a local `mc` client if missing, (2) launches an R script `gbifdb::gbif_download()` inside the container.
+The repo provides a small wrapper that: 
+- (1) downloads a local `mc` client if missing
+- (2) launches an R script `gbifdb::gbif_download()` inside the container.
 
 ## Mirror the latest US snapshot into `./gbifdata`
 
@@ -120,12 +116,12 @@ Outputs (examples):
 
 ## B. SLURM array (one taxon per task; optional)
 
-    printf "Mammalia\n" > taxa.txt
+    printf "Mammalia\n" > data/taxa.txt
 
     sbatch --array=1-1 \
       --cpus-per-task=32 --mem=120G -t 24:00:00 \
       --export=THREADS=32,CONFIG=config/config.yml,SIF=container/gbif-kde.sif, \
-               GBIFDB_DIR=$PWD/gbifdata,TAXA_FILE=taxa.txt \
+               GBIFDB_DIR=$PWD/gbifdata,TAXA_FILE=data/taxa.txt \
       scripts/submit_stage1_array.slurm
 
 # What the Stage–1 script does
