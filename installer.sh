@@ -19,7 +19,25 @@ GBIFDB_DIR_DEFAULT="gbifdata"
 APPTAINER_BIN="${APPTAINER:-apptainer}"
 CLEANENV="1"
 
-# ------------------------------------------------------------
+
+
+# ---------------------------------------------
+# Bootstrap clone if repo files are missing 
+# --------------------------------------------- 
+REPO_URL="${REPO_URL:-https://github.com/alrobles/gbif_effort.git}"
+REPO_DIR="${REPO_DIR:-gbif_effort}"
+BRANCH="${BRANCH:-main}"
+
+if [[ ! -f "container/build.sh" || ! -f "container/apptainer.def" || ! -d "scripts" ]]; then
+  echo "Repo files not found here. Cloning ${REPO_URL} (branch ${BRANCH}) ..."
+  if [[ ! -d "${REPO_DIR}" ]]; then
+    git clone --depth 1 -b "${BRANCH}" "${REPO_URL}" "${REPO_DIR}"
+  fi
+  cd "${REPO_DIR}"
+fi
+
+
+#------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------
 usage() {
